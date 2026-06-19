@@ -1,0 +1,13 @@
+team_name: ""
+primary_contact_name: ""
+primary_contact_email: ""
+primary_contact_phone: ""
+github_repo: "https://github.com/Rehaan-2006/AI_Candidate_Ranking_System"
+sandbox_link: ""
+ai_tools_declared:
+  - Claude
+compute_environment: "MacBook Air, CPU only, Python 3.x"
+team_members:
+  - name: ""
+    email: ""
+methodology_summary: ""
