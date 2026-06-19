@@ -1,0 +1,21 @@
+# Virtual Environments
+env/
+venv/
+
+# Large Datasets (Exceeds GitHub 100MB limit)
+candidates.jsonl
+candidates.jsonl.gz
+
+# Generated Output / Cache Files (from our upcoming scripts)
+target_candidates.json
+cache/
+*.pkl
+*.npy
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*~
+
+# macOS System Files
+.DS_Store
