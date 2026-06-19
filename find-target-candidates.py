@@ -4,7 +4,7 @@ import os
 def get_current_role_info(candidate):
     """Safely extract the current title and company from the top-level career_history."""
     profile = candidate.get("profile", {})
-    career = candidate.get("career_history", [])  # top-level field
+    career = candidate.get("career_history", [])  
     
     if career and isinstance(career, list) and len(career) > 0:
         current = career[0]
