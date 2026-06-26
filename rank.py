@@ -23,7 +23,7 @@ TOP_K     = 100
 
 def main():
     parser = argparse.ArgumentParser(description="Redrob candidate ranker")
-    parser.add_argument("--candidates", default="candidates.jsonl.gz",
+    parser.add_argument("--candidates", default="candidates.jsonl",
                         help="Path to candidate pool (used only for validation)")
     parser.add_argument("--out", default="submission.csv",
                         help="Output CSV path")
@@ -55,7 +55,9 @@ def main():
     final_scores = compute_scores(semantic_scores, features_list)
 
     # ── Top-100 selection ────────────────────────────────────────────────────
-    top_indices = np.argsort(final_scores)[::-1][:TOP_K]
+    candidate_ids = np.array([c["candidate_id"] for c in candidates])
+    order = np.lexsort((candidate_ids, -final_scores))
+    top_indices = order[:TOP_K]
 
     # ── Build CSV rows ───────────────────────────────────────────────────────
     print("Generating reasoning and writing CSV...")

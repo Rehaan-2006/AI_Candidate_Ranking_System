@@ -8,14 +8,9 @@ import math
 from datetime import datetime, date
 
 from honeypot import detect_honeypot
+from constants import is_consulting
 
 # ── Constants ───────────────────────────────────────────────────────────────
-
-CONSULTING_FIRMS = {
-    "tcs", "tata consultancy", "wipro", "infosys", "accenture",
-    "cognizant", "capgemini", "hcl", "tech mahindra", "mindtree",
-    "mphasis", "hexaware", "ltimindtree", "l&t infotech", "birlasoft",
-}
 
 PREFERRED_LOCATIONS = {
     "pune": 1.00, "noida": 1.00,
@@ -62,11 +57,6 @@ def _days_since(date_str):
         return 999
 
 
-def _is_consulting(company_name):
-    name = company_name.lower()
-    return any(firm in name for firm in CONSULTING_FIRMS)
-
-
 # ── Component scorers ────────────────────────────────────────────────────────
 
 def career_quality(candidate):
@@ -82,13 +72,13 @@ def career_quality(candidate):
         return 0.10
 
     # Hard disqualifier: entire career at consulting firms
-    if all(_is_consulting(j.get("company", "")) for j in career):
+    if all(is_consulting(j.get("company", "")) for j in career):
         return 0.05
 
     score = 0.40  # base
 
     # Product company ratio
-    product_jobs = [j for j in career if not _is_consulting(j.get("company", ""))]
+    product_jobs = [j for j in career if not is_consulting(j.get("company", ""))]
     score += 0.20 * (len(product_jobs) / len(career))
 
     # AI/ML title progression through career

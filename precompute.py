@@ -2,12 +2,11 @@
 """
 Pre-computation step — run once, no time limit.
 Produces:
-  cache/candidate_embeddings.npy   (N × 768, float32)
+  cache/candidate_embeddings.npy   (N x 768, float32)
   cache/jd_embedding.npy           (768,)
   cache/candidate_features.pkl     (candidates list + features list)
 """
 
-import gzip
 import json
 import os
 import pickle
@@ -18,7 +17,7 @@ from tqdm import tqdm
 
 from features import extract_features
 
-CANDIDATES_FILE = "candidates.jsonl.gz"
+CANDIDATES_FILE = "candidates.jsonl"
 CACHE_DIR       = "cache"
 MODEL_NAME      = "BAAI/bge-base-en-v1.5"
 BATCH_SIZE      = 256
@@ -99,12 +98,12 @@ def main():
 
     # ── Load model ───────────────────────────────────────────────────────────
     print(f"Loading model: {MODEL_NAME}")
-    model = SentenceTransformer(MODEL_NAME)
+    model = SentenceTransformer(MODEL_NAME, device="cpu")
 
     # ── Load candidates ──────────────────────────────────────────────────────
     print(f"Loading candidates from {CANDIDATES_FILE} ...")
     candidates = []
-    with gzip.open(CANDIDATES_FILE, "rt", encoding="utf-8") as f:
+    with open(CANDIDATES_FILE, "rt", encoding="utf-8") as f:
         for line in tqdm(f, desc="Parsing JSONL"):
             line = line.strip()
             if line:

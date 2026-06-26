@@ -5,11 +5,7 @@ Every claim maps to an actual field in the candidate profile — no hallucinatio
 """
 
 from datetime import datetime, date
-
-CONSULTING_FIRMS = {
-    "tcs", "tata consultancy", "wipro", "infosys", "accenture",
-    "cognizant", "capgemini", "hcl", "tech mahindra", "mindtree",
-}
+from constants import is_consulting
 
 
 def _days_since(date_str):
@@ -18,10 +14,6 @@ def _days_since(date_str):
         return (date.today() - d).days
     except Exception:
         return 999
-
-
-def _is_consulting(company):
-    return any(f in company.lower() for f in CONSULTING_FIRMS)
 
 
 def _best_verified_skill(candidate):
@@ -37,7 +29,7 @@ def _top_product_company(candidate):
     """Return most recent non-consulting company."""
     for job in candidate.get("career_history", []):
         company = job.get("company", "")
-        if not _is_consulting(company):
+        if not is_consulting(company):
             return company
     return None
 
