@@ -26,8 +26,7 @@ team_members:
 # ============================================================================
 github_repo: "https://github.com/Rehaan-2006/AI_Candidate_Ranking_System"
 
-sandbox_link: ""  # Fill in your Colab notebook share link
-
+sandbox_link: "https://colab.research.google.com/drive/1tjiTjqLIaPZXyG_SImQ-ik-4dNJZBtnK?usp=sharing"  
 
 reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
 
