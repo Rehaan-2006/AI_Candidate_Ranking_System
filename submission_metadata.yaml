@@ -3,16 +3,16 @@
 # ============================================================================
 # Team identity
 # ============================================================================
-team_name: "your-team-name-here"  # Used in leaderboard and announcements
+team_name: "Caffeinated Coders"  # Used in leaderboard and announcements
 
 primary_contact:
   name: "Abbas Hussain"
-  email: "primary@example.com"   # Used for all organizer communication
+  email: "abbashussain0986@gmail.com"   # Used for all organizer communication
   phone: "+91-8688872664"        # Used for top-50 / top-10 outreach
 
 team_members:
   - name: "Abbas Hussain"
-    email: "member1@example.com"
+    email: "abbashussain0986@gmail.com"
     role: "Team Lead"          # Optional, e.g. "Team Lead", "Backend", "Data", "ML Engineer", "Data Engineer"
   - name: "Shaikh Mohd Rehaan"
     email: "shaikhrehaan2006@gmail.com"
