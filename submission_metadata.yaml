@@ -17,9 +17,10 @@ team_members:
   - name: "Shaikh Mohd Rehaan"
     email: "shaikhrehaan2006@gmail.com"
     role: "ML Engineer"
-  - name: "Pattapu Solomon"
-    email: "solomon@example.com"
+  - name: "Solomon Pattapu"
+    email: "pattapusolomon89@gmail.com"
     role: "Data Engineer"
+    
 # ============================================================================
 # Code and reproducibility
 # ============================================================================
@@ -42,7 +43,7 @@ compute:
   uses_gpu_for_inference: false          # Ranking step is pure CPU + numpy
   has_network_during_ranking: false      # All artifacts pre-loaded from cache/
   pre_computation_required: true         # Embeddings + features built in precompute.py
-  pre_computation_time_minutes: 10       # On Google Colab T4 GPU via redrob_precompute.ipynb
+  pre_computation_time_minutes: 1 hour 5 minutes       # On Google Colab T4 GPU via redrob_precompute.ipynb
   # Note: pre-computation on local M1 CPU takes approximately 60-90 minutes.
   # The Colab notebook is provided to reproduce this step on GPU in ~10 minutes.
 
