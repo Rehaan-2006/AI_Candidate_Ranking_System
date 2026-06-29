@@ -60,7 +60,7 @@ def generate_reasoning(candidate, rank, score, features):
     if yoe:
         strengths.append(f"{yoe:.0f} yrs applied ML/AI")
 
-    if top_co and not _is_consulting(top_co):
+    if top_co and not is_consulting(top_co):
         label = "currently" if top_co == current_co else "ex"
         strengths.append(f"product company background ({label}-{top_co})")
 
