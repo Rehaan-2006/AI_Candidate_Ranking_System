@@ -1,13 +1,98 @@
-team_name: ""
-primary_contact_name: ""
-primary_contact_email: ""
-primary_contact_phone: ""
-github_repo: "https://github.com/Rehaan-2006/AI_Candidate_Ranking_System"
-sandbox_link: ""
-ai_tools_declared:
-  - Claude
-compute_environment: "MacBook Air, CPU only, Python 3.x"
+# Redrob Hackathon — Submission Metadata
+
+# ============================================================================
+# Team identity
+# ============================================================================
+team_name: "your-team-name-here"  # Used in leaderboard and announcements
+
+primary_contact:
+  name: "Abbas Hussain"
+  email: "primary@example.com"   # Used for all organizer communication
+  phone: "+91-8688872664"        # Used for top-50 / top-10 outreach
+
 team_members:
-  - name: ""
-    email: ""
-methodology_summary: ""
+  - name: "Abbas Hussain"
+    email: "member1@example.com"
+    role: "Team Lead"          # Optional, e.g. "Team Lead", "Backend", "Data", "ML Engineer", "Data Engineer"
+  - name: "Shaikh Mohd Rehaan"
+    email: "shaikhrehaan2006@gmail.com"
+    role: "ML Engineer"
+  - name: "Pattapu Solomon"
+    email: "solomon@example.com"
+    role: "Data Engineer"
+# ============================================================================
+# Code and reproducibility
+# ============================================================================
+github_repo: "https://github.com/Rehaan-2006/AI_Candidate_Ranking_System"
+
+sandbox_link: ""  # Fill in your Colab notebook share link
+
+
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+
+# ============================================================================
+# Compute environment
+# ============================================================================
+compute:
+  platform: "MacBook Air M1"
+  cpu_cores: 8
+  ram_gb: 8
+  python_version: "3.13"
+  os: "macOS"
+  uses_gpu_for_inference: false          # Ranking step is pure CPU + numpy
+  has_network_during_ranking: false      # All artifacts pre-loaded from cache/
+  pre_computation_required: true         # Embeddings + features built in precompute.py
+  pre_computation_time_minutes: 10       # On Google Colab T4 GPU via redrob_precompute.ipynb
+  # Note: pre-computation on local M1 CPU takes approximately 60-90 minutes.
+  # The Colab notebook is provided to reproduce this step on GPU in ~10 minutes.
+
+# ============================================================================
+# AI tools declaration
+# ============================================================================
+ai_tools_used:
+  - "Claude"
+
+ai_usage_summary: |
+  Claude (Anthropic) was used throughout the project for architecture design,
+  scoring formula development, code review, and code generation across all
+  pipeline modules. Key engineering decisions discussed with Claude include:
+  embedding model selection (BGE-base over lighter alternatives), the two-phase
+  pre-computation/ranking split, honeypot detection logic, weighted feature
+  fusion weights, and tie-breaking strategy. All code was reviewed, debugged,
+  and validated by the participant. No candidate data or profile content was
+  sent to any external LLM or API. The ranking step itself runs entirely
+  offline with no network access.
+
+# ============================================================================
+# Approach summary
+# ============================================================================
+methodology_summary: |
+  Two-phase pipeline. Phase 1 (pre-computation, no time limit): all 100,000
+  candidate profiles are converted to rich text representations prioritising
+  career history descriptions over skills lists, then embedded using
+  BAAI/bge-base-en-v1.5 (768-dim). The job description is distilled into a
+  focused query embedding using BGE's asymmetric retrieval instruction prefix.
+  Five structured feature scores are extracted per candidate: career quality
+  (product-company ratio, AI/ML title progression, tenure stability), 
+  availability (activity recency, open-to-work flag, response rate, notice
+  period, interview completion), location (tiered against Pune/Noida
+  preference), and skill depth (assessment-verified JD-relevant skills plus
+  GitHub activity). A honeypot multiplier (0.05–1.0) flags structural
+  impossibilities — education timeline paradoxes, proficiency inflation vs
+  verified assessments, expert skills with zero duration. Phase 2 (ranking,
+  <10 seconds on CPU): cosine similarity is computed as a single numpy matrix
+  multiply. A weighted composite score (semantic 35%, career quality 25%,
+  availability 20%, location 15%, skill depth 5%) is fused, the honeypot
+  multiplier is applied, and top-100 candidates are selected with
+  candidate_id tie-breaking. Reasoning is generated from literal profile
+  fields — no LLM calls at ranking time.
+
+# ============================================================================
+# Declarations
+# ============================================================================
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true       
+  reproduction_tested: true       
