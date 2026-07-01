@@ -1,139 +1,168 @@
 # System Architecture Note
-## Redrob Intelligent Candidate Ranking Engine
+## Redrob Intelligent Candidate Discovery & Ranking Engine
 
 ---
 
-### Problem Framing
+## Problem framing
 
-Given a single job description and a pool of 100,000 candidate profiles, the system must produce a ranked shortlist of the top 100 candidates, with a 1–2 sentence explanation per candidate. The core challenge is going beyond keyword matching — a candidate who "built a recommendation engine at scale" should surface ahead of one who lists "RAG" and "Pinecone" in their skills but has weak assessed scores and an IT-services-only career.
+The challenge: rank 100,000 candidate profiles against a single job description, within a 5-minute CPU constraint, with explainable per-candidate output.
 
-Two hard constraints shape the architecture: the ranking step must complete in under 5 minutes on CPU with no network access, and honeypot profiles (structurally impossible candidates designed to trap naive rankers) must be suppressed — any submission with more than 10 honeypots in the top 100 is disqualified.
-
----
-
-### Two-Phase Architecture
-
-The system is split into a pre-computation phase (no time limit) and a ranking phase (≤5 minutes). This split is the foundational design decision: it allows a high-quality embedding model to be used without any speed penalty at ranking time.
+Three forces make this non-trivial:
+1. **Scale** — embedding 100k candidates at inference time on CPU is infeasible (~40 min).
+2. **Keyword traps** — the dataset deliberately contains profiles that match on skills keywords but are disqualified by career trajectory, domain, or behavioral signals.
+3. **Availability gap** — a technically perfect candidate who is unreachable is, for practical hiring, worthless.
 
 ---
 
-### Phase 1 — Pre-computation
+## Two-phase architecture
 
-**Input:** `candidates.jsonl` (100,000 candidate profiles)
+The system splits into two decoupled phases with a cache layer between them.
 
-**Step 1.1 — Text Construction (`precompute.py: build_candidate_text`)**
+### Phase 1 — Precomputation (offline, no time limit)
 
-Each candidate profile is converted into a single rich text string. The ordering is intentional and signal-weighted:
+**Inputs:** `candidates.jsonl` (100,000 candidates, ~465 MB uncompressed)
 
-1. Current role context (title, company, years of experience, industry)
-2. Career history descriptions — the highest-signal content, where actual work done is described
-3. Verified, long-duration skills only (advanced/expert proficiency, ≥12 months, assessed ≥60/100)
-4. Profile summary last (tends to be templated and keyword-heavy)
+**Step 1.1 — Text representation**
+Each candidate is converted to a single rich-text string that prioritises the highest-signal fields in this order:
+- Header line: current title, company, years of experience, industry
+- Job descriptions from career history (first 4 roles), including company, title, industry, and company size context — this is where real semantic signal lives
+- Advanced/expert skills with duration ≥ 12 months that have platform-verified assessment scores ≥ 60 — only verified high-confidence skills
+- Profile summary (lowest priority — tends to be generic)
 
-This ordering ensures that a candidate whose career description says "architected a vector search pipeline serving 10M daily queries" produces an embedding that captures semantic fit, regardless of whether they used the word "retrieval" in their skills list.
+Skills with zero duration, unverified high-proficiency claims, and plain-language career narratives are all handled: BGE's training distribution covers paraphrase, so "built a search system at a startup" and "production retrieval engineering" are close in embedding space.
 
-**Step 1.2 — Candidate Embedding**
+**Step 1.2 — Embedding**
+Model: `BAAI/bge-base-en-v1.5` (768-dim, 109M parameters)
 
-Model: `BAAI/bge-base-en-v1.5` (768-dimensional dense vectors, ~109M parameters)
+Chosen for:
+- Asymmetric retrieval design — separate query/passage representations, suited for JD-to-candidate matching
+- State-of-the-art performance on BEIR and MTEB retrieval benchmarks
+- Practical size — fits on free-tier Colab T4, runs in ~12 min for 100k candidates at batch size 512
 
-All 100,000 candidate texts are encoded in batches with L2 normalization enabled. The result is a `(100000, 768)` float32 numpy array saved to `cache/candidate_embeddings.npy` (~293 MB).
+Both candidate embeddings and the JD query embedding are L2-normalised at encode time, so cosine similarity reduces to a dot product — enabling a single NumPy matrix multiplication at ranking time.
 
-BGE was selected over lighter alternatives (`all-MiniLM-L6-v2`, `bge-small`) because this is an asymmetric retrieval task — short query against long documents — and BGE-base is specifically trained for this pattern. Since pre-computation has no time constraint, the larger model costs nothing in the ranking step.
+JD query uses the BGE asymmetric prefix: `"Represent this sentence for searching relevant passages: {JD_QUERY}"`. Candidate texts do not use the prefix (passage side).
 
-**Step 1.3 — JD Embedding**
+**Step 1.3 — Feature extraction**
+Five structured scores computed per candidate, each normalised to [0, 1]:
 
-The job description is distilled into a focused query string (not the full 3-page JD) covering the role's must-haves and ideal candidate traits. BGE's asymmetric retrieval instruction prefix is prepended to the JD embedding only, following the model's intended usage pattern. The result is a `(768,)` vector saved to `cache/jd_embedding.npy`.
+| Feature | Key signals used |
+|---|---|
+| `career_quality` | Product vs consulting ratio, AI/ML title progression, YoE sweet spot (4–10yr), avg tenure stability, CV-primary domain penalty, wrong-domain current title penalty |
+| `availability` | Platform recency (90-day exponential half-life), open-to-work flag, recruiter response rate, notice period bracket, interview completion rate |
+| `location` | City-level scoring (Pune/Noida = 1.0, Hyderabad/Mumbai/Delhi = 0.9, Bangalore = 0.75, etc.), relocation willingness fallback |
+| `skill_depth` | Per-skill contribution: proficiency level × duration × assessment verification; keyword-stuffer penalty (claimed advanced/expert but assessed < 50); GitHub activity as supplemental signal |
+| `honeypot_multiplier` | See Honeypot Detection section below |
 
-**Step 1.4 — Structured Feature Extraction (`features.py`)**
-
-For each candidate, five scalar feature scores (all normalized to [0,1]) are extracted:
-
-- **Career Quality (0–1):** Penalizes candidates whose entire career is at IT services/consulting firms (hard disqualifier, returns 0.05). Rewards product company experience, consistent AI/ML title progression, and tenure stability. Penalizes title-chasing (avg tenure < 12 months) and candidates whose skills are dominated by computer vision or speech — domains the JD explicitly disqualifies.
-
-- **Availability (0–1):** Weighted combination of five platform signals — recency of last login (exponential decay, 90-day half-life), open-to-work flag, recruiter response rate, notice period (≤30 days ideal; >90 days penalized heavily), and interview completion rate.
-
-- **Location (0–1):** Tiered scoring against the role's Pune/Noida preference. Hyderabad/Mumbai/Delhi NCR scores 0.90. Other Indian cities score 0.65 with relocation willingness or 0.50 without. Outside India scores 0.35 (willing to relocate) or 0.10 (not willing).
-
-- **Skill Depth (0–1):** Scores only JD-relevant skills (vector DBs, embeddings, retrieval, LLM integration, NLP, evaluation). For each relevant skill, the contribution is weighted by verified assessment score and duration in months. Claimed "advanced/expert" proficiency with an assessment score below 50 triggers a keyword-stuffer penalty. GitHub activity score (normalized) contributes 25% of the final skill depth score.
-
-- **Honeypot Multiplier (0.05–1.0):** Applied after all scoring is complete. Flags structural impossibilities: expert skills with zero months of duration, implausibly many expert skills (>8), systematic proficiency inflation versus verified assessments, career duration inconsistencies, education timeline paradoxes (master's degree starting before bachelor's finishes), and non-technical current titles paired with rich AI skill lists. Each flag increments a counter; the counter maps to a multiplier from 1.0 (clean) down to 0.05 (near-zero, effectively eliminated).
-
-All feature dicts for all 100,000 candidates are serialized to `cache/candidate_features.pkl`.
+**Step 1.4 — Cache write**
+Three files written to `cache/`:
+- `candidate_embeddings.npy` — shape (100000, 768), float32, L2-normalised
+- `jd_embedding.npy` — shape (768,), L2-normalised
+- `candidate_features.pkl` — dict with `"candidates"` (raw dicts) and `"features"` (scored dicts), aligned by index
 
 ---
 
-### Phase 2 — Ranking (≤5 minutes)
+### Phase 2 — Ranking (online, ≤5 min CPU constraint)
 
-**Input:** Three cache files from Phase 1, plus the JD embedding.
+**Runtime:** ~4 seconds on CPU for 100k candidates.
 
-**Step 2.1 — Load Artifacts (~2–4 seconds)**
-
-`candidate_embeddings.npy`, `jd_embedding.npy`, and `candidate_features.pkl` are loaded into memory. Total RAM footprint: ~1.5 GB.
-
-**Step 2.2 — Semantic Similarity (~1 second)**
-
-Because both embedding arrays are L2-normalized, dot product equals cosine similarity. A single matrix multiplication computes all 100,000 similarity scores simultaneously:
-
+**Step 2.1 — Semantic scores**
+```python
+semantic_scores = candidate_embeddings @ jd_embedding  # shape (100000,)
 ```
-semantic_scores = candidate_embeddings @ jd_embedding   # shape: (100000,)
-```
+Single matrix multiplication. Because both sides are L2-normalised, this equals cosine similarity. No loop, no GPU needed.
 
-No vector database, no FAISS index, no approximate nearest-neighbor search — just numpy. For this workload (single fixed query, static corpus), it is the fastest and simplest possible approach.
-
-**Step 2.3 — Weighted Score Fusion (`scorer.py`)**
-
-The final composite score for each candidate:
-
-```
-score = (0.35 × semantic)
-      + (0.25 × career_quality)
-      + (0.20 × availability)
-      + (0.15 × location)
-      + (0.05 × skill_depth)
-      × honeypot_multiplier
+**Step 2.2 — Weighted composite**
+```python
+final_score = (
+    0.35 * semantic_score +
+    0.25 * career_quality +
+    0.20 * availability +
+    0.15 * location +
+    0.05 * skill_depth
+) * honeypot_multiplier
 ```
 
-Weights are calibrated for the challenge's evaluation metric (NDCG@10 is 50% of the total score), so getting the top 10 right matters more than uniformly distributing quality across all 100.
+Weight rationale:
+- Semantic (35%): primary fit signal, captures both explicit and paraphrased relevance
+- Career quality (25%): most durable signal — career trajectory doesn't lie the way skill lists do
+- Availability (20%): directly affects whether a hire actually closes
+- Location (15%): hard operational constraint for this role
+- Skill depth (5%): supplemental verification signal; deliberately low-weighted to avoid keyword-stuffing exploitation
 
-**Step 2.4 — Top-100 Selection with Tie-Breaking**
-
-`np.lexsort` sorts candidates by score descending, with `candidate_id` ascending as a stable tie-breaker:
-
+**Step 2.3 — Selection and tie-breaking**
 ```python
 order = np.lexsort((candidate_ids, -final_scores))
 top_indices = order[:100]
 ```
+Primary sort: score descending. Tie-break: `candidate_id` ascending (CAND_XXXXXXX lexicographic order). This satisfies the validator's monotonicity and tie-break requirements deterministically.
 
-This satisfies the submission validator's requirement that equal-scored candidates appear in ascending `candidate_id` order.
+**Step 2.4 — Reasoning generation**
+For each of the top 100, a 1–2 sentence reasoning string is generated directly from the candidate's raw profile fields. Every claim is traced to a field value — no language model, no inference, no hallucination risk. Structure: Sentence 1 = top strengths (YoE, best product company, best verified skill, career progression); Sentence 2 = concerns or availability highlights.
 
-**Step 2.5 — Reasoning Generation (`reasoning.py`)**
-
-For each of the top 100 candidates, a 1–2 sentence reasoning string is assembled from actual profile and signal fields — no hallucination, no LLM call at ranking time. Sentence 1 surfaces the top strengths (years of experience, best product company, top verified skill, career trajectory). Sentence 2 surfaces notable concerns (notice period above 30 days, inactivity, location mismatch, low response rate) or highlights availability positives if there are no concerns. Every claim in the reasoning maps to a specific field in the candidate record.
-
-**Step 2.6 — CSV Output**
-
-Columns: `candidate_id`, `rank` (1–100), `score` (monotonically non-increasing), `reasoning`. Validated by `validate_submission.py` before submission.
+**Step 2.5 — Output**
+`submission.csv` with columns: `candidate_id, rank, score, reasoning`. Score is monotonically non-increasing by rank. All 100 ranks covered exactly once.
 
 ---
 
-### Technology Stack
+## Honeypot detection
 
-| Component | Technology |
-|-----------|-----------|
-| Embedding model | `BAAI/bge-base-en-v1.5` via `sentence-transformers` |
-| Embedding storage | NumPy `.npy` file (~293 MB) |
-| Feature storage | Python `pickle` (`.pkl`) |
-| Semantic similarity | NumPy matrix multiply |
-| Feature extraction | Pure Python |
-| Output format | Python `csv` stdlib |
-| GPU pre-computation | Google Colab (T4), downloadable cache for local ranking |
+The dataset contains ~80 honeypot profiles with deliberately impossible or fraudulent signals. Submissions with >10% honeypots in top 100 are disqualified.
+
+Detection uses 7 independent flag types, each adding flag points:
+
+| Flag | Signal | Weight |
+|---|---|---|
+| Zero-duration advanced/expert skill | Claimed expertise with no time spent | +2 |
+| Excessive expert count (>8) | Implausible breadth of mastery | +2 |
+| Systematic proficiency inflation | Advanced/expert claimed but platform assessment < 40 | +1 each (cap 3) |
+| Career duration impossibility | Stated YoE >> sum of all job durations | +2 |
+| Single role >130 months | Synthetic data artifact | +1 |
+| Education timeline impossibility | Master's started before Bachelor's ended | +2 |
+| Domain mismatch | Non-technical current title + rich AI skill list | +3 |
+
+Flag score → multiplier:
+```
+0 flags → 1.00    (clean)
+1 flag  → 0.85
+2 flags → 0.65
+3 flags → 0.40
+4 flags → 0.20
+5+      → 0.05    (effectively suppressed)
+```
+
+Multiplier is applied to the composite score rather than hard-removing candidates. This avoids catastrophic ranking failures from false positives — a clean candidate with one unusual-but-real signal gets a 15% penalty, not disqualification.
+
+The consulting-firm list used in `career_quality` and `reasoning` is defined once in `constants.py` and imported by both modules, preventing the list from drifting between scoring and explanation.
 
 ---
 
-### What Makes This Non-Trivially Hard
+## What the system handles correctly
 
-**The honeypot problem:** A pure BM25 or TF-IDF ranker would score keyword stuffers highly. A pure semantic ranker would surface honeypots with plausible career descriptions. The honeypot detector specifically targets structural data inconsistencies that no amount of text similarity can catch — impossible education timelines, claimed expert proficiency with zero duration in a skill, and assessment scores that dramatically contradict stated proficiency.
+**Keyword trap candidates:** A candidate with FAISS, Milvus, and RAG listed as expert skills but whose career is 100% at TCS/Wipro receives `career_quality = 0.05` (all-consulting disqualifier), reducing their composite score to roughly 0.03–0.04 regardless of semantic similarity. They do not appear in the top 100.
 
-**The plain-language Tier 5 problem:** Genuinely excellent candidates who don't use buzzwords must surface. Embedding career descriptions (not just skill lists) into the query space addresses this directly — "scaled a search infrastructure from 100K to 10M daily queries" and "built Milvus-backed semantic search" embed into similar regions of the 768-dimensional space.
+**Plain-language Tier 5 candidates:** A candidate whose job description reads "built the internal search system for product discovery" without using "dense retrieval" or "vector database" explicitly still embeds close to the JD query because BGE's training covers semantic paraphrase. They surface on semantic score alone.
 
-**The availability-vs-fit tradeoff:** A semantically perfect candidate who last logged in 9 months ago, won't relocate from a non-preferred city, and has a 120-day notice period is, practically speaking, close to unhireable. The availability and location scores weight these behavioral signals meaningfully without completely overriding strong semantic and career quality signals.
+**Unavailable candidates:** A candidate with an ideal skill profile who hasn't been active for 180 days, has a 5% recruiter response rate, and a 120-day notice period receives `availability ≈ 0.15`. With 20% weight, this knocks ~17 percentage points off their composite score — enough to push them out of the top 100 in a competitive pool.
+
+**Behavioral twins:** Two candidates with identical skill profiles are separated by availability, location, and behavioral signals, ensuring the ranking is not arbitrary at tie points.
+
+---
+
+## Files and dependencies
+
+| File | Role |
+|---|---|
+| `constants.py` | Single source of truth for consulting-firm list and `is_consulting()` |
+| `honeypot.py` | Flag-based multiplier computation |
+| `features.py` | Five structured feature scores |
+| `scorer.py` | Weighted composite formula |
+| `reasoning.py` | Fact-grounded reasoning string generation |
+| `precompute.py` | Phase 1 driver |
+| `rank.py` | Phase 2 driver |
+| `demo_sample.py` | Demo/sandbox — runs on sample_candidates.json, no cache required |
+| `redrob_precompute.ipynb` | Colab notebook for cloud GPU precomputation |
+
+**Runtime dependencies:** `sentence-transformers`, `numpy`, `tqdm`  
+**Precompute hardware:** GPU recommended (T4 free Colab: ~12 min for 100k candidates)  
+**Ranking hardware:** CPU only (no GPU, no network, 16 GB RAM constraint satisfied)

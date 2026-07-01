@@ -17,6 +17,13 @@ cache/*.pkl
 find-target-candidates.py
 target_candidates.json
 
+# Submission CSV — submitted via portal, not GitHub
+submission.csv
+team_*.csv
+
+# Colab notebook output
+demo_output.csv
+
 # ── Virtual environment ─────────────────────────────────────────────────
 env/
 venv/
