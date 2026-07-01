@@ -137,4 +137,8 @@ tqdm>=4.66.0
 
 ## AI Tools Declaration
 
-This project was developed with assistance from Claude (Anthropic) for architecture design, scoring formula logic, and code review. All engineering decisions, data exploration, debugging, and final implementation were performed by the participant.
+Our team maintained a strict **"human-at-the-top-of-the-loop"** approach throughout the project, managing the product vision, architecture, and execution end-to-end. We utilized Claude (Anthropic) as an advanced digital helper and junior pair-programmer to accelerate development. 
+
+While Claude assisted with brainstorming, drafting scoring formulas, and generating pipeline code, **all core engineering decisions and product directions were driven by our team**. We directed the AI on key strategic choices, such as embedding model selection, the pre-computation/ranking split, and the honeypot detection logic. 
+
+Every line of code was rigorously reviewed, tested, and validated by us. Furthermore, we designed the system with privacy as a first principle: **no candidate data or profile content is ever sent to any external LLM or API**. The final ranking step runs entirely offline, ensuring complete data security and proving that we built the right product the right way.

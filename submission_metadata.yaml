@@ -53,15 +53,17 @@ ai_tools_used:
   - "Claude"
 
 ai_usage_summary: |
-  Claude (Anthropic) was used throughout the project for architecture design,
-  scoring formula development, code review, and code generation across all
-  pipeline modules. Key engineering decisions discussed with Claude include:
-  embedding model selection (BGE-base over lighter alternatives), the two-phase
-  pre-computation/ranking split, honeypot detection logic, weighted feature
-  fusion weights, and tie-breaking strategy. All code was reviewed, debugged,
-  and validated by the participant. No candidate data or profile content was
-  sent to any external LLM or API. The ranking step itself runs entirely
-  offline with no network access.
+  Our team maintained a strict "human-at-the-top-of-the-loop" approach throughout the project,
+  managing the product vision and execution end-to-end. We utilized Claude (Anthropic) as an
+  advanced digital helper and junior pair-programmer. While Claude assisted with brainstorming
+  architecture design, drafting the scoring formula, and generating boilerplate code across pipeline
+  modules, all core engineering decisions were driven by human insight. We guided the AI on key
+  choices like embedding model selection (BGE-base), the two-phase pre-computation/ranking split,
+  and honeypot detection logic. Every line of code generated was rigorously reviewed, debugged,
+  and validated by our team to ensure it met our standards. We deliberately designed the system
+  so that no candidate data or profile content is ever sent to any external LLM or API, guaranteeing
+  complete data privacy. The final ranking step runs entirely offline, reflecting our commitment to
+  building the right product the right way.
 
 # ============================================================================
 # Approach summary
